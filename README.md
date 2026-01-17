@@ -200,9 +200,6 @@ rush_hour_surcharge    <- ifelse(hour >= 16 & hour < 20 & weekday, 1, 0)
 
 <img width="458" height="289" alt="number of neighbors k " src="https://github.com/user-attachments/assets/7a15c77a-436c-4a94-a5ec-6c40463b795c" />
 
-<p align="center">
-  <img src="images/06_mse_vs_k.png" alt="MSE vs Number of Neighbors" width="700">
-</p>
 <p align="center"><i>Figure 1: MSE vs. Number of Neighbors (k) - Optimal k = 5</i></p>
 
 The MSE vs. k plot demonstrates that the KNN model achieves optimal predictive performance when **k = 5**. At this point, the model balances bias and variance effectively.
