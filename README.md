@@ -53,4 +53,5 @@ Model: k-Nearest Neighbors Regression
 Methods: Data cleaning, feature engineering, EDA, model tuning
 
 
-"C:\Users\MyPC\Desktop\plot"
+<img width="619" height="340" alt="plot1" src="https://github.com/user-attachments/assets/f81c536f-7d69-4c42-bb2d-b325400e9923" />
+
