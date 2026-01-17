@@ -1,0 +1,320 @@
+# 🚕 NYC Green Taxi Tip Prediction Using k-NN Regression
+
+[![R](https://img.shields.io/badge/R-4.0+-blue.svg)](https://www.r-project.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+A machine learning project that predicts tip amounts for NYC Green Taxi trips using the CRISP-DM methodology and k-Nearest Neighbors (k-NN) regression modeling.
+
+![Taxi Banner](images/taxi_banner.png)
+
+---
+
+## 📋 Table of Contents
+
+- [Overview](#overview)
+- [Dataset](#dataset)
+- [Project Structure](#project-structure)
+- [Installation](#installation)
+- [Methodology](#methodology)
+- [Results](#results)
+- [Key Insights](#key-insights)
+- [Usage](#usage)
+- [Future Improvements](#future-improvements)
+- [References](#references)
+
+---
+
+## 🎯 Overview
+
+This project analyzes NYC Green Taxi trip data from 2018 to:
+1. **Predict tip amounts** using k-NN regression
+2. **Understand tipping patterns** based on trip characteristics
+3. **Analyze operational efficiency** across different times and days
+
+### Why Green Taxis?
+Green taxis (Boro Taxis) serve areas outside Manhattan's core, providing valuable insights into outer-borough transportation patterns.
+
+---
+
+## 📊 Dataset
+
+| Attribute | Description |
+|-----------|-------------|
+| **Source** | [NYC Taxi & Limousine Commission](https://www.nyc.gov/site/tlc/about/tlc-trip-record-data.page) |
+| **Period** | January - February 2018 |
+| **Original Size** | 1,048,575 rows × 19 columns |
+| **Cleaned Size** | 531,855 rows × 26 columns |
+
+### Key Variables
+
+| Variable | Type | Description |
+|----------|------|-------------|
+| `tip_amount` | Target | Tip amount in USD (credit card only) |
+| `trip_distance` | Numeric | Distance traveled in miles |
+| `fare_amount` | Numeric | Base fare in USD |
+| `passenger_count` | Numeric | Number of passengers |
+| `pickup_hour` | Numeric | Hour of pickup (0-23) |
+| `overnight_surcharge` | Binary | 1 if pickup between 8PM-6AM |
+| `rush_hour_surcharge` | Binary | 1 if pickup during rush hour |
+| `efficiency_ratio` | Engineered | Ratio of actual fare to expected fare |
+
+---
+
+## 📁 Project Structure
+
+```
+nyc-green-taxi-tip-prediction/
+│
+├── 📂 data/
+│   ├── 2018_Green_Taxi_Trip_Data.csv
+│   └── taxi_zone_lookup.csv
+│
+├── 📂 images/
+│   ├── tip_distribution.png
+│   ├── mse_vs_k.png
+│   ├── actual_vs_predicted.png
+│   ├── efficiency_heatmap.png
+│   ├── efficiency_weekday_weekend.png
+│   └── airport_trips.png
+│
+├── 📂 src/
+│   └── taxi_tip_prediction.Rmd
+│
+├── 📄 README.md
+└── 📄 LICENSE
+```
+
+---
+
+## 🛠️ Installation
+
+### Prerequisites
+
+- R (version 4.0 or higher)
+- RStudio (recommended)
+
+### Required Packages
+
+```r
+# Install required packages
+install.packages(c(
+  "tidyverse",
+  "lubridate",
+  "psych",
+  "correlation",
+  "caret",
+  "FNN"
+))
+```
+
+### Clone Repository
+
+```bash
+git clone https://github.com/yourusername/nyc-green-taxi-tip-prediction.git
+cd nyc-green-taxi-tip-prediction
+```
+
+---
+
+## 🔬 Methodology
+
+This project follows the **CRISP-DM** (Cross-Industry Standard Process for Data Mining) framework:
+
+### 1. Business Understanding
+- Predict tip amounts to help drivers optimize earnings
+- Identify factors that influence tipping behavior
+
+### 2. Data Understanding & Exploration
+
+![Tip Distribution](images/tip_distribution.png)
+*Figure 1: Distribution of tip amounts showing right-skewed pattern with many zero tips*
+
+### 3. Data Preparation
+
+#### Cleaning Steps:
+- ✅ Removed missing values and parsing errors
+- ✅ Filtered to credit card payments only (cash tips not recorded)
+- ✅ Removed trips < 1 min or > 3 hours
+- ✅ Capped passengers at 6 (NYC legal limit)
+- ✅ Removed tips > 35% of fare (outliers)
+- ✅ Removed tolls > $25
+
+#### Feature Engineering:
+```r
+# Created new features
+trip_duration_minutes  # Dropoff - Pickup time
+speed_of_taxi         # Distance / Duration
+efficiency_ratio      # (Fare - Base) / Expected fare by distance
+overnight_surcharge   # 1 if 8PM-6AM
+rush_hour_surcharge   # 1 if 4PM-8PM weekdays
+```
+
+#### Normalization:
+- Log transformation for skewed variables
+- Min-Max scaling (0-1 range) for k-NN
+
+### 4. Modeling
+
+**Algorithm**: k-Nearest Neighbors (k-NN) Regression
+
+**Why k-NN?**
+- Non-parametric (no assumptions about data distribution)
+- Intuitive interpretation
+- Works well with normalized numerical features
+
+**Train/Test Split**: 70% / 30%
+
+### 5. Evaluation
+
+![MSE vs K](images/mse_vs_k.png)
+*Figure 2: Mean Squared Error vs. Number of Neighbors (k) - Optimal k = 5*
+
+---
+
+## 📈 Results
+
+### Model Performance
+
+| Metric | Value |
+|--------|-------|
+| **Optimal k** | 5 |
+| **MSE (normalized)** | 0.000163 |
+| **Training samples** | 372,298 |
+| **Test samples** | 159,557 |
+
+### Actual vs Predicted Tips
+
+![Actual vs Predicted](images/actual_vs_predicted.png)
+*Figure 3: Scatter plot comparing actual vs predicted tip amounts. Points near the red dashed line indicate accurate predictions.*
+
+**Observations:**
+- ✅ Strong performance for tips in $5-$15 range
+- ⚠️ Underestimates high tips (>$20) due to rarity in training data
+- ⚠️ Many zero-tip predictions cluster at origin
+
+### Example Prediction
+
+```r
+# Test Example #5
+Predicted tip amount: $4.94
+Actual tip amount:    $4.96
+```
+
+---
+
+## 💡 Key Insights
+
+### 1. Efficiency Patterns by Time & Day
+
+![Efficiency Heatmap](images/efficiency_heatmap.png)
+*Figure 4: Heatmap showing average efficiency ratio by pickup hour and day of week. Yellow box highlights optimal efficiency period (7AM-6PM Mon-Fri).*
+
+**Finding**: Best operational efficiency occurs during weekday business hours (7AM-6PM, Monday-Friday).
+
+### 2. Weekday vs Weekend Efficiency
+
+![Weekday vs Weekend](images/efficiency_weekday_weekend.png)
+*Figure 5: Line plot comparing efficiency ratios between weekdays and weekends across hours.*
+
+**Finding**: Weekday efficiency consistently higher than weekends during daytime hours.
+
+### 3. Why Morning Dips? Airport Trips!
+
+![Airport Trips](images/airport_trips.png)
+*Figure 6: Distribution of airport-bound trips by hour on weekdays.*
+
+**Finding**: 
+- 5AM spike in long-distance airport trips reduces efficiency
+- Top destinations at 5AM: LaGuardia, JFK, Manhattan work areas
+- Most early morning passengers travel solo (likely commuters)
+
+### 4. Why Evening Dips? Traffic & Short Rides
+
+![Short Rides by Hour](images/short_rides_by_hour.png)
+*Figure 7: Count of rides under 1 mile by hour of day.*
+
+**Finding**: 
+- Evening efficiency drops due to increased short/aborted rides
+- NYC traffic peaks after 4PM, leading to passengers exiting taxis stuck in traffic
+
+---
+
+## 🚀 Usage
+
+### Running the Analysis
+
+1. Open `src/taxi_tip_prediction.Rmd` in RStudio
+2. Set working directory to project root
+3. Run all chunks or knit to HTML
+
+### Making Predictions
+
+```r
+# Load the trained model and make predictions
+source("src/taxi_tip_prediction.R")
+
+# Example: Predict tip for a new trip
+new_trip <- data.frame(
+  passenger_count = 1,
+  log_trip_distance = 0.25,
+  log_fare_amount = 0.30,
+  log_total_amount = 0.35,
+  log_fare_by_distance = 0.32,
+  efficiency_ratio = 0.06,
+  log_speed_of_taxi = 0.40,
+  overnight_surcharge = 0,
+  rush_hour_surcharge = 1
+)
+
+predicted_tip <- knn.predict(train_data, new_trip, k = 5)
+```
+
+---
+
+## 🔮 Future Improvements
+
+1. **Try other algorithms**: Random Forest, XGBoost, Neural Networks
+2. **Include location features**: Encode pickup/dropoff zones
+3. **Add weather data**: Incorporate external weather conditions
+4. **Time series analysis**: Capture seasonal patterns
+5. **Real-time prediction**: Deploy as API service
+
+---
+
+## 📚 References
+
+1. NYC Taxi & Limousine Commission. (2018). *TLC Trip Record Data*. [Link](https://www.nyc.gov/site/tlc/about/tlc-trip-record-data.page)
+
+2. NYC311. (n.d.). *Taxis*. The City of New York. [Link](https://portal.311.nyc.gov/article/?kanumber=KA-01245)
+
+3. NYC TLC. (2019). *Taxi Fare*. [Archived](https://web.archive.org/web/20190722151033/https://www.nyc.gov/site/tlc/passengers/taxi-fare.page)
+
+4. Corrado, K. (2021). *NYC has worst traffic congestion in U.S., among worst in world: study*. PIX11. [Link](https://pix11.com/news/local-news/nyc-worst-traffic-in-country-study-finds/)
+
+---
+
+## 👤 Author
+
+**Your Name**
+- GitHub: [@yourusername](https://github.com/yourusername)
+- LinkedIn: [Your LinkedIn](https://linkedin.com/in/yourprofile)
+
+---
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+---
+
+## 🙏 Acknowledgments
+
+- NYC Taxi & Limousine Commission for providing open data
+- R community for excellent packages
+- CRISP-DM framework for structured methodology
+
+---
+
+<p align="center">
+  <i>If you found this project helpful, please consider giving it a ⭐!</i>
+</p>
