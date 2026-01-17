@@ -200,7 +200,7 @@ rush_hour_surcharge    <- ifelse(hour >= 16 & hour < 20 & weekday, 1, 0)
 
 <img width="458" height="289" alt="number of neighbors k " src="https://github.com/user-attachments/assets/7a15c77a-436c-4a94-a5ec-6c40463b795c" />
 
-<p align="center"><i>Figure 1: MSE vs. Number of Neighbors (k) - Optimal k = 5</i></p>
+<p align="left"><i>Figure 1: MSE vs. Number of Neighbors (k) - Optimal k = 5</i></p>
 
 The MSE vs. k plot demonstrates that the KNN model achieves optimal predictive performance when **k = 5**. At this point, the model balances bias and variance effectively.
 
@@ -354,20 +354,6 @@ Test Example #5:
 result <- knn.predict(train_data, test_data, k = 5, return_preds = TRUE)
 ```
 
----
-
-## 🔮 Future Improvements
-
-| Improvement | Description | Priority |
-|-------------|-------------|----------|
-| 🌲 Random Forest | Try ensemble methods for better accuracy | High |
-| 📍 Location Features | Encode pickup/dropoff zones | High |
-| 🌧️ Weather Data | Add external weather conditions | Medium |
-| 📈 Time Series | Capture seasonal patterns | Medium |
-| 🌐 API Deployment | Real-time prediction service | Low |
-
----
-
 ## 📚 References
 
 1. **NYC TLC Trip Data** - NYC Taxi & Limousine Commission (2018)  
@@ -399,6 +385,3 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-<p align="center">
-  <b>⭐ If you found this project helpful, please give it a star! ⭐</b>
-</p>
