@@ -270,9 +270,7 @@ Test Example #5:
 
 <img width="465" height="296" alt="weekday to weekend avg " src="https://github.com/user-attachments/assets/e9b7c7ec-00e3-4600-a908-17ef3f55fa89" />
 
-<p align="center">
-  <img src="images/08_efficiency_weekday_weekend.png" alt="Efficiency Weekday vs Weekend" width="700">
-</p>
+
 <p align="center"><i>Figure 4: Average Efficiency Ratio by Hour - Weekday vs Weekend comparison</i></p>
 
 > **Finding:** Weekday efficiency is consistently higher than weekends during business hours (6AM-6PM)
@@ -281,16 +279,10 @@ Test Example #5:
 
 <img width="456" height="290" alt="avg distance" src="https://github.com/user-attachments/assets/94ebcaff-0bfc-471e-9c58-446fd82f82e5" />
 
-<p align="center">
-  <img src="images/02_avg_distance_by_hour.png" alt="Average Distance by Hour" width="700">
-</p>
 <p align="center"><i>Figure 5: Average Trip Distance by Hour - Spike at 5AM indicates airport trips</i></p>
 
 <img width="458" height="298" alt="drop off " src="https://github.com/user-attachments/assets/117494b6-f35c-43ea-9377-707a91496d6d" />
 
-<p align="center">
-  <img src="images/03_top_dropoff_5am.png" alt="Top Drop-off Zones at 5AM" width="700">
-</p>
 <p align="center"><i>Figure 6: Top Drop-off Locations at 5AM - Airports dominate early morning destinations</i></p>
 
 > **Finding:** 5AM efficiency dip is caused by long airport trips
@@ -310,9 +302,6 @@ Test Example #5:
 ### 4️⃣ Airport Trips Distribution
 <img width="512" height="296" alt="long trip" src="https://github.com/user-attachments/assets/41945fc7-2f51-4980-86a5-579394f1beb0" />
 
-<p align="center">
-  <img src="images/05_airport_trips_by_hour.png" alt="Airport Trips by Hour" width="700">
-</p>
 <p align="center"><i>Figure 7: Airport Trips by Hour on Weekdays - Peak during afternoon rush hour</i></p>
 
 > **Finding:** While 5AM shows airport activity, the majority of airport trips occur during afternoon rush hour (3PM-6PM)
@@ -321,9 +310,6 @@ Test Example #5:
 
 <img width="485" height="289" alt="short rides" src="https://github.com/user-attachments/assets/4d2afb30-05a8-45fa-afaa-773c3bac8f33" />
 
-<p align="center">
-  <img src="images/07_short_rides_by_hour.png" alt="Short Rides by Hour" width="700">
-</p>
 <p align="center"><i>Figure 8: Rides Under 1 Mile by Hour - Peak during evening hours (6PM-9PM)</i></p>
 
 > **Finding:** Post-6PM efficiency drop is due to increased short/aborted rides, likely caused by passengers exiting taxis stuck in traffic
