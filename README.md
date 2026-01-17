@@ -222,11 +222,7 @@ The MSE vs. k plot demonstrates that the KNN model achieves optimal predictive p
 ### Actual vs Predicted Tip Amounts
 
 <img width="469" height="289" alt="actual vs predicted amount" src="https://github.com/user-attachments/assets/7e90d045-710e-4afd-a280-247c66cbc548" />
-
-<p align="center">
-  <img src="images/01_actual_vs_predicted.png" alt="Actual vs Predicted Tip Amounts" width="700">
-</p>
-<p align="center"><i>Figure 2: Actual vs Predicted Tip Amounts - Points near the red dashed line indicate accurate predictions</i></p>
+<p align="left"><i>Figure 2: Actual vs Predicted Tip Amounts - Points near the red dashed line indicate accurate predictions</i></p>
 
 ### Prediction Quality by Tip Range
 
@@ -258,20 +254,14 @@ Test Example #5:
 ### 1️⃣ Optimal Operating Hours
 
 <img width="433" height="290" alt="heatmap" src="https://github.com/user-attachments/assets/57ef4dfc-89b2-4d19-afe6-faf2b8198c98" />
-
-<p align="center">
-  <img src="images/04_efficiency_heatmap.png" alt="Efficiency Heatmap" width="700">
-</p>
-<p align="center"><i>Figure 3: Average Efficiency Ratio by Pickup Hour and Day - Yellow box highlights optimal period (7AM-6PM Mon-Fri)</i></p>
+<p align="left"><i>Figure 3: Average Efficiency Ratio by Pickup Hour and Day - Yellow box highlights optimal period (7AM-6PM Mon-Fri)</i></p>
 
 > **Finding:** Best operational efficiency occurs during **7AM-6PM, Monday-Friday**
 
 ### 2️⃣ Weekday vs Weekend Efficiency
 
 <img width="465" height="296" alt="weekday to weekend avg " src="https://github.com/user-attachments/assets/e9b7c7ec-00e3-4600-a908-17ef3f55fa89" />
-
-
-<p align="center"><i>Figure 4: Average Efficiency Ratio by Hour - Weekday vs Weekend comparison</i></p>
+<p align="left"><i>Figure 4: Average Efficiency Ratio by Hour - Weekday vs Weekend comparison</i></p>
 
 > **Finding:** Weekday efficiency is consistently higher than weekends during business hours (6AM-6PM)
 
@@ -279,11 +269,11 @@ Test Example #5:
 
 <img width="456" height="290" alt="avg distance" src="https://github.com/user-attachments/assets/94ebcaff-0bfc-471e-9c58-446fd82f82e5" />
 
-<p align="center"><i>Figure 5: Average Trip Distance by Hour - Spike at 5AM indicates airport trips</i></p>
+<p align="left"><i>Figure 5: Average Trip Distance by Hour - Spike at 5AM indicates airport trips</i></p>
 
 <img width="458" height="298" alt="drop off " src="https://github.com/user-attachments/assets/117494b6-f35c-43ea-9377-707a91496d6d" />
 
-<p align="center"><i>Figure 6: Top Drop-off Locations at 5AM - Airports dominate early morning destinations</i></p>
+<p align="left"><i>Figure 6: Top Drop-off Locations at 5AM - Airports dominate early morning destinations</i></p>
 
 > **Finding:** 5AM efficiency dip is caused by long airport trips
 
@@ -302,7 +292,7 @@ Test Example #5:
 ### 4️⃣ Airport Trips Distribution
 <img width="512" height="296" alt="long trip" src="https://github.com/user-attachments/assets/41945fc7-2f51-4980-86a5-579394f1beb0" />
 
-<p align="center"><i>Figure 7: Airport Trips by Hour on Weekdays - Peak during afternoon rush hour</i></p>
+<p align="left"><i>Figure 7: Airport Trips by Hour on Weekdays - Peak during afternoon rush hour</i></p>
 
 > **Finding:** While 5AM shows airport activity, the majority of airport trips occur during afternoon rush hour (3PM-6PM)
 
@@ -310,7 +300,7 @@ Test Example #5:
 
 <img width="485" height="289" alt="short rides" src="https://github.com/user-attachments/assets/4d2afb30-05a8-45fa-afaa-773c3bac8f33" />
 
-<p align="center"><i>Figure 8: Rides Under 1 Mile by Hour - Peak during evening hours (6PM-9PM)</i></p>
+<p align="left"><i>Figure 8: Rides Under 1 Mile by Hour - Peak during evening hours (6PM-9PM)</i></p>
 
 > **Finding:** Post-6PM efficiency drop is due to increased short/aborted rides, likely caused by passengers exiting taxis stuck in traffic
 
