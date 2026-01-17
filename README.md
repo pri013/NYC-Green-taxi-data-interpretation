@@ -364,8 +364,8 @@ result <- knn.predict(train_data, test_data, k = 5, return_preds = TRUE)
 
 **Priya Dhumal**
 
-[![GitHub](https://github.com/pri013/NYC-Green-taxi-data-interpretation)
-[![LinkedIn](www.linkedin.com/in/priya13d)
+[GitHub](https://github.com/pri013/NYC-Green-taxi-data-interpretation)
+[LinkedIn](www.linkedin.com/in/priya13d)
 
 ---
 
