@@ -403,10 +403,10 @@ result <- knn.predict(train_data, test_data, k = 5, return_preds = TRUE)
 
 ## 👤 Author
 
-**Your Name**
+**Priya Dhumal**
 
-[![GitHub](https://img.shields.io/badge/GitHub-yourusername-black?style=flat-square&logo=github)](https://github.com/yourusername)
-[![LinkedIn](https://img.shields.io/badge/LinkedIn-Connect-blue?style=flat-square&logo=linkedin)](https://linkedin.com/in/yourprofile)
+[![GitHub](https://github.com/pri013/NYC-Green-taxi-data-interpretation)
+[![LinkedIn](www.linkedin.com/in/priya13d)
 
 ---
 
