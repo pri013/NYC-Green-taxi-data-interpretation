@@ -1,0 +1,987 @@
+---
+title: "Predicting NYC Green Taxi Tips Using CRISP-DM & k-NN Regression Modeling"
+output:
+  html_document:
+    df_print: paged
+---
+
+
+```{r warning=FALSE, message=FALSE}
+if (!requireNamespace("tidyverse", quietly = TRUE)){
+    install.packages("tidyverse")
+}
+library(tidyverse)
+if (!requireNamespace("lubridate", quietly = TRUE)){
+    install.packages("lubridate")
+}
+
+library(lubridate)
+if (!requireNamespace("psych", quietly = TRUE)) {
+  install.packages("pysch")
+}
+library(psych)
+if (!requireNamespace("correlation", quietly = TRUE)) {
+  install.packages("correlation")
+}
+library(correlation)
+
+if (!requireNamespace("caret", quietly = TRUE)) {
+  install.packages("caret")
+}
+library(caret)
+if (!requireNamespace("FNN", quietly = TRUE)) {
+  install.packages("FNN")
+}
+library(FNN)
+```
+
+## Question 1
+
+```{r}
+# read in 2018 green taxi data from csv
+taxi <- read_csv("2018_Green_Taxi_Trip_Data.csv")
+```
+### Data Exploration
+```{r}
+problems(taxi)
+```
+A few rows (10) in columns 10 and 17 use , in the number. Okay to ignore.
+
+```{r}
+head(taxi)
+dim(taxi)
+str(taxi)
+summary(taxi)
+```
+There are very few NA compared to the million rows of data these can be removed 
+```{r}
+# remove NA values
+taxi <- taxi %>%
+    drop_na(fare_amount, total_amount, trip_type)
+summary(taxi)
+```
+VendorID should be a factor
+RatecodeID should be a factor
+Store_and_fwd_flag should be a factor
+Payment_type should be a factor
+Trip_type should be a factor 
+ehail_fee is a column of entirely NA and needs to be removed 
+
+```{r}
+# convert fields to factors and remove ehail_fee
+taxi_factored <- taxi %>%
+  mutate(
+    VendorID = as.factor(VendorID),
+    RatecodeID = as.factor(RatecodeID),
+    store_and_fwd_flag = as.factor(store_and_fwd_flag),
+    payment_type = as.factor(payment_type),
+    trip_type = as.factor(trip_type)
+  ) %>%
+    select(-ehail_fee)
+```
+
+```{r}
+str(taxi_factored)
+summary(taxi_factored)
+```
+
+
+```{r}
+# convert lpep_pickup_datetime and lpep_dropoff_datetime to datetime
+taxi_time <- taxi_factored %>%
+  mutate(
+    lpep_pickup_datetime = mdy_hm(lpep_pickup_datetime),
+    lpep_dropoff_datetime = mdy_hm(lpep_dropoff_datetime)
+  )
+```
+
+Add trip_duration_minutes column
+
+```{r}
+# Create a new column trip duration in minutes
+taxi_time$trip_duration_minutes <- as.numeric(difftime(taxi_time$lpep_dropoff_datetime, taxi_time$lpep_pickup_datetime, units = "mins"))
+```
+
+Add speed_of_taxi column
+
+```{r}
+# create new column speed of taxi
+taxi_time$speed_of_taxi <- with(taxi_time, 
+    ifelse(trip_distance > 0 & trip_duration_minutes > 0,
+           trip_distance / (trip_duration_minutes / 60),
+           0)
+)
+
+```
+
+Add pickup_day column
+
+```{r}
+# create pickup day column
+taxi_time$pickup_day <- factor(weekdays(taxi_time$lpep_pickup_datetime),
+                               levels = c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"),
+                               ordered = TRUE)
+```
+
+Add overnight surcharge 1/0 (Y/N)
+Plus 50 cents overnight surcharge 8pm to 6am
+
+```{r}
+# add overnight surgcharges y/n
+taxi_time <- taxi_time %>%
+  mutate(
+    pickup_hour = hour(lpep_pickup_datetime),  # extract hour (0 to 23)
+    overnight_surcharge = ifelse(pickup_hour >= 20 | pickup_hour < 6, 1, 0)
+  )
+```
+
+Add rush hour surcharge 1/0 (Y/N)
+
+```{r}
+# add rush hour surcharge y/n
+taxi_time <- taxi_time %>%
+  mutate(
+    pickup_hour = hour(lpep_pickup_datetime),
+    pickup_day = wday(lpep_pickup_datetime, label = TRUE, abbr = FALSE),  # full weekday name
+    
+    rush_hour_surcharge = 
+      ifelse(pickup_hour >= 16 & pickup_hour < 20 & 
+             pickup_day %in% c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday"), 
+             1, 0)
+    
+  )
+```
+
+
+```{r}
+head(taxi_time)
+summary(taxi_time)
+```
+
+Trip duration has 0 minutes and 24 hours. Will keep anything greater than 1 minute and less than 3 hours
+```{r}
+# filter out trips less than 1 minute and greater than 3 hours
+taxi_time <- taxi_time %>% 
+    filter(1 < trip_duration_minutes & 180 > trip_duration_minutes)
+summary(taxi_time)
+```
+
+
+```{r}
+# check how is the tip amount distribution among different payment types
+taxi_time %>%
+    ggplot(aes(x = payment_type, y = tip_amount)) + 
+    geom_boxplot(na.rm = TRUE) + 
+    labs(
+    title = "Distribution of Tip Amount by Payment Type",
+    x = "Payment Type (USD)",
+    y = "Tip Amount",
+    caption = "This box plot shows the tip amount distribution among different payment types"
+    )
+```
+```{r}
+# check how does the log(tip amount) distribution among different payment types
+taxi_time %>%
+    ggplot(aes(x = payment_type, y = log(tip_amount+1))) + 
+    geom_boxplot(na.rm = TRUE) + 
+    labs(
+    title = "Distribution of log(Tip Amount + 1) by Payment Type",
+    x = "Payment Type",
+    y = "log(Tip Amount + 1) (USD)",
+    caption = "This box plot shows the distribution of log(tip amount) among different payment types"
+    )
+```
+
+There are 564346 credit card payments. There are 476990 cash payments and cash tips are not included according to the dictionary. To create a model for tips we either need to remove the cash payments since the tips are not recorded or we need to impute the tip amount since all the values are $0. We will only keep credit card payments because imputing half of our data for the outcome variable could introduce errors and bias into the data. We will remove no charge, unknown and voided trips. 
+
+```{r}
+# only keep credit card data
+taxi_time <- taxi_time %>%
+    filter(payment_type == 1) 
+dim(taxi_time)
+summary(taxi_time)
+```
+date of 2009? Data entry issue?
+
+```{r}
+# 2009 dates?
+taxi_time %>%
+    filter(year(lpep_pickup_datetime) == 2009)
+```
+10 rows with 2009 date. Will remove.
+
+```{r}
+# only keep dates that are 2018
+taxi_time <- taxi_time %>%
+    filter(year(lpep_pickup_datetime) == 2018)
+summary(taxi_time)
+```
+### Dealing with outliers
+
+```{r}
+# find how many rows with more than 6 passengers
+taxi_time %>%
+    filter(passenger_count > 6)
+```
+"The maximum number of passengers allowed in a yellow taxicab by law is 4 in a 4-passenger taxicab or 5 in a 5-passenger taxicab. There is an exception that an additional passenger must be accepted if that passenger is under age 7 and is held on the lap of an adult passenger seated in the rear seat." 
+
+NYC311. (n.d.). Taxis. The City of New York. https://portal.311.nyc.gov/article/?kanumber=KA-01245
+
+```{r}
+# remove rows that have more than 6 passengers
+taxi_time <- taxi_time %>%
+    filter(passenger_count <= 6)
+summary(taxi_time)
+```
+```{r}
+# investigate 0 passengers
+taxi_time %>%
+    filter(passenger_count == 0)
+```
+
+```{r}
+# are there 0 passengers with 0 fare?
+taxi_time %>%
+    filter(passenger_count == 0 & fare_amount == 0)
+```
+None
+
+The median passenger count is 1 and we need to use a whole number of passengers. Will impute the remaining zeros in pssenger count to 1. 
+
+```{r}
+# impute rows with 0 passengers with 1 
+taxi_pass <- taxi_time %>%
+  mutate(passenger_count = ifelse(passenger_count == 0, 1, passenger_count))
+
+summary(taxi_pass)
+```
+```{r}
+# histogram of passengers
+ggplot(taxi_pass, aes(x = passenger_count)) +
+    geom_histogram(binwidth = 1, fill = "pink", color = "black") +
+    labs(title = "Histogram of passengers' number", x = "Number of Passengers", caption = "This histogram shows the passenger distrubution across all trips") +
+    theme_minimal()
+```
+
+Right skewed with 1 passenger being most common. 
+
+```{r}
+# function to find outliers for a column and return a data frame of outliers 
+find_outliers <- function(dataframe, column_name){
+  col_data <- dataframe[[column_name]]
+  mean_col <- mean(col_data, na.rm = TRUE)
+  sd_col <- sd(col_data, na.rm = TRUE)
+
+  outliers <- dataframe %>%
+    filter((.data[[column_name]] > mean_col + 3 * sd_col) |
+           (.data[[column_name]] < mean_col - 3 * sd_col)) %>%
+      arrange(desc(.data[[column_name]]))
+
+  return(outliers)
+}
+```
+
+
+```{r}
+taxi_pass %>%
+  filter(trip_distance == 0)
+```
+
+1618 entries have 0 distance.
+
+Filter based on waiting time of 15 mins, in the worst case 20.
+
+2.50 + $10.00 = $12.50: Overnight only (8PM–6AM):
+2.50 + $10.00 + $0.50 = $13.00 Rush Hour only (4PM–8PM weekdays):
+2.50 + $10.00 + $1.00 = $13.50
+
+Based on this the minimum is 2.5 and the max is 13.5
+
+New York City Taxi and Limousine Commission. (2019, July 22). Taxi fare. NYC.gov.
+https://web.archive.org/web/20190722151033/https://www.nyc.gov/site/tlc/passengers/taxi-fare.page
+
+```{r}
+# Step 1: Pull ALL zero-distance trips
+zero_distance_all <- taxi_pass %>%
+  filter(trip_distance == 0)
+
+# Step 2: From those, keep only the ones you want
+zero_distance_to_keep <- zero_distance_all %>%
+  filter(fare_amount >= 2.5 & fare_amount <= 13.5,
+         trip_duration_minutes > 0 & trip_duration_minutes <= 20)
+
+dim(zero_distance_to_keep)
+
+# Step 3: Remove ALL zero-distance trips from the original dataset
+taxi_pass_main <- taxi_pass %>%
+  filter(trip_distance != 0)
+
+# Step 4: Add back only the filtered subset that you want to keep 
+taxi_improved <- bind_rows(taxi_pass_main, zero_distance_to_keep)
+
+dim(taxi_improved)
+summary(taxi_improved)
+```
+
+
+```{r}
+# trip distance outliers 
+outliers_trip_distance <- find_outliers(taxi_improved, "trip_distance")
+dim(outliers_trip_distance)
+head(outliers_trip_distance)
+tail(outliers_trip_distance)
+```
+
+While some of the distances seem far, the fare amount seems correct. It would be possible to take a taxi into upstate New York with a trip distance of 113.72 miles.
+
+```{r}
+# histogram of trip distance
+ggplot(taxi_improved, aes(trip_distance)) +
+    geom_histogram(binwidth = 0.5, fill = "green", color = "black") +
+    labs(title = "Histogram of Trip Distance", 
+         x = "Length of Trip Distance (miles)",
+         caption = "This histogram shows the trip distance distribution") +
+    theme_minimal()
+```
+
+Very right skewed, most trips are short but there were a few very long trips
+
+```{r}
+# calculated outliers of fare amount
+outliers_fair_amount <- find_outliers(taxi_improved, "fare_amount")
+dim(outliers_fair_amount)
+head(outliers_fair_amount)
+tail(outliers_fair_amount)
+```
+There is a $2.5 initial charge for a taxi
+
+```{r}
+# Are there fare below 2.5
+taxi_improved %>%
+    filter(fare_amount < 2.50)
+```
+31 entries less than 2.50
+
+Remove fare_amount that are below 2.50
+```{r}
+# Filter fare below 2.5
+taxi_improved <- taxi_improved %>%
+    filter(fare_amount >= 2.50)
+```
+
+```{r}
+summary(taxi_improved)
+```
+```{r}
+# histogram of fare amount
+ggplot(taxi_improved, aes(x = fare_amount)) +
+    geom_histogram(binwidth = 0.75, fill = "red", color = "black") +
+    labs(title = "Histogram of Fare Amount", 
+         x = "Fare Amount ($)",
+         caption = "This histogram shows the fare amount distribution") +
+    theme_minimal()
+```
+
+Very right skewed. This corresponds with the trip distance being right skewed, most rides are less than $50 but there are a few very expensive rides (these were long distance rides)
+
+Remove correlation between fare_amount and fare_distance.
+
+```{r}
+taxi_cleaned <- taxi_improved %>%
+  mutate(
+    fare_by_distance = trip_distance * 2.5,  # $0.50 per 1/5 mile = $2.50 per mile
+    efficiency_ratio = ifelse(fare_by_distance >= 1.25, # only calculate if 0.5 miles or more, otherwise, efficiency ratio is 0
+                              (fare_amount - 2.5) / fare_by_distance,
+                              0)
+  )
+```
+
+This code calculates an efficiency_ratio, which compares what a passenger actually paid (excluding the base fare) to what they were expected to pay based solely on the trip distance, using a rate of $2.50 per mile. The ratio gives insight into fare fairness—if it’s greater than 1, the passenger likely paid more than the distance alone would suggest. This overpayment could be due to extra charges like time-based surcharges (e.g., traffic delays), or other inefficiencies in the trip. 
+
+To avoid skew from very short trips, the ratio is only computed for trips of at least 0.5 miles; otherwise, it defaults to 0.
+
+
+```{r}
+head(taxi_cleaned)
+summary(taxi_cleaned)
+```
+```{r}
+# find outliers for efficiency 
+efficiency_outliers <- find_outliers(taxi_cleaned, "efficiency_ratio")
+dim(efficiency_outliers)
+head(efficiency_outliers)
+tail(efficiency_outliers)
+```
+Highest efficiency ratios because of very low trip distance (< 1 mile) with high fare amounts. The top 5 have a negotiated fare and the top 3 have 2 minute trip durations. 
+```{r}
+# filter for high efficiencies ratios due to very short trip distances 
+taxi_cleaned %>%
+    filter(efficiency_ratio > 20 & trip_distance < 1) %>%
+    arrange(desc(trip_distance))
+```
+Will remove these 22 rows
+```{r}
+taxi_cleaned <- taxi_cleaned %>%
+    filter(!(efficiency_ratio > 20 & trip_distance < 1))
+summary(taxi_cleaned)
+```
+
+```{r}
+# find outliers tip amount
+tip_outliers <- find_outliers(taxi_cleaned, "tip_amount")
+dim(tip_outliers)
+head(tip_outliers)
+tail(tip_outliers)
+```
+This results in too many outliers. There are a lot of 0 tips which is likely dragging down the mean
+
+```{r}
+# 0 tips
+taxi_cleaned %>%
+    filter(tip_amount == 0)
+```
+will try filtering out the zeros before finding the outliers
+```{r}
+non_zero_tip <- taxi_cleaned %>%
+    filter(!(tip_amount == 0))
+# find tip outliers 
+tip_outliers <- find_outliers(non_zero_tip, "tip_amount")
+dim(tip_outliers)
+head(tip_outliers)
+tail(tip_outliers)
+```
+The lowest outliers are about a 30% tip. One article I read online said that credit card charges can sometimes have a 30% tip added automatically, so I am hesitant to remove these. Will remove anything with more than 35% tip. 
+
+https://newyorkpass.com/en/things-to-do/cab-etiquette-in-nyc
+
+```{r}
+# filter out tips of greater than 35%
+taxi_clean <- taxi_cleaned %>%
+  filter(tip_amount <= 0.35 * fare_amount)
+
+summary(taxi_clean)
+
+taxi_clean %>%
+    filter(tip_amount == 50)
+```
+Highest tip now makes sense a 50 dollar tip on a $200 trip
+
+```{r}
+# histogram of tip amounts
+ggplot(taxi_clean, aes(x = tip_amount)) +
+    geom_histogram(binwidth = 0.5, fill = "yellow", color = "black") +
+    labs(title = "Histogram of Tip Amounts", 
+         x = "Tip Amounts ($)",
+         caption = "This histogram shows the tip amount distribution") +
+    theme_minimal()
+```
+
+Tip amounts is very right skewed, especially because there are so many $0 tip amounts
+
+```{r}
+# outliers in tolls amount
+toll_outliers <- find_outliers(taxi_clean, "tolls_amount")
+dim(toll_outliers)
+head(toll_outliers)
+tail(toll_outliers)
+
+```
+
+Some of the tolls seem quite expensive. 99.99 on 0 distance trips is incorrect. Lowest outlier of 3 is very reasonable
+
+
+```{r}
+# create histogram, filter out zeros first because skews graph too much to evaluate everything else
+taxi_clean %>%
+    filter(tolls_amount > 0) %>%
+    ggplot(aes(x = tolls_amount)) +
+    geom_histogram(binwidth = 1, fill = "steelblue", color = "black") +
+    labs(title = "Histogram of Toll Amounts", 
+         x = "Toll Amount ($)",
+         caption = "This histogram shows the toll amount distribution") +
+    theme_minimal()
+```
+```{r}
+taxi_clean %>%
+    filter(tolls_amount > 0) %>%
+    pull(tolls_amount) %>%
+    median()
+```
+
+Right skewed with over 7500 with same amount $5.76. Seems reasonable to remove any tolls over 25 based on histogram
+
+```{r}
+# remove toll amounts $25 or above
+taxi_final <- taxi_clean %>%
+    filter(tolls_amount < 25)
+
+summary(taxi_final)
+```
+
+```{r}
+# histogram of cleaned toll amounts
+ggplot(taxi_final, aes(x = tolls_amount)) +
+    geom_histogram(binwidth = 0.1, fill = "orange", color = "black") +
+    labs(title = "Histogram of cleaned Toll Amounts", 
+         x = "Toll Amounts ($)",
+         caption = "This histogram shows the cleaned toll amount distribution") +
+    theme_minimal()
+```
+
+Very right skewed with most toll amounts being zero. We can also see the common toll amount of $5.76.
+
+
+
+```{r}
+# find outliers of total amount
+total_outliers <- find_outliers(taxi_final, "total_amount")
+dim(total_outliers)
+head(total_outliers)
+tail(total_outliers)
+```
+Highest outlier it correlated with longest distance and therefore no removals needed
+
+```{r}
+# create histogram of total_amount
+ggplot(taxi_final, aes(x = total_amount)) +
+    geom_histogram(binwidth = 1, fill = "steelblue", color = "black") +
+    labs(title = "Histogram of Total Amount", 
+         x = "Total Amount",
+         caption = "This histogram shows the total amount distribution") +
+    theme_minimal()
+```
+
+Very right skewed but there were some long trips that cost a lot. 
+```{r}
+summary(taxi_final)
+```
+```{r}
+# Set a random seed for reproducibility
+set.seed(123)
+sampled_df <- sample_n(taxi_final, 1000)
+```
+
+
+```{r big_pairs_plot, fig.width=12, fig.height=12, warning=FALSE, message=FALSE}
+# Sample 1000 random rows
+pairs.panels(sampled_df)
+```
+
+```{r}
+# correlation of numeric variables
+cor(taxi_final[c("passenger_count", "trip_distance", "fare_amount", "extra", "mta_tax", "tip_amount", "tolls_amount", "improvement_surcharge", "total_amount", "trip_duration_minutes", "speed_of_taxi", "efficiency_ratio")])
+```
+To include in our model we selected passenger_count, log_trip_distance, log_fare_amount, tip_amount, log_total_amount, log_fare_by_distance, efficiency_ratio, log_speed_of_taxi, overnight_surcharge, rush_hour_surcharge. We did not include VendorID because it has a very low correlation with tip amount of -0.03. We did not include pick up or drop off time because we used the times to determine if there was a surcharge for overnight or rush hour and the columns themselves had very low correlation with tip amount -0.05. store_and_fwd_flag does not have anything to do with the trip, passenger or cost and is irrelevant to the model. We excluded RatecodeID because it had a low correlation with tip amount of 0.11. We chose to leave pick up location and drop off location as numeric as there were about 265 different locations. Pickup Location also had a very low correlation to tip_amount of 0.01.  To be used in the model they would need to be factors converted dummy variables and this would have greatly complicated the analysis. We excluded extra because of the low correlation with tip amount of 0.03. We excluded mta_tax because of the low correlation with tip amount of -0.07. We excluded improvement_surcharge because of the low correlation with tip amount of -0.07. We excluded payment_type because our final data frame only included type 1, credit card. We excluded trip_type because of the low correlation with tip amount of 0.07. We excluded trip_duration_minutes since this influences the efficiency_ratio. We excluded pickup_day because of the low correlation with tip amount of 0.01. We excluded pickup_hour because of the low correlation with tip amount of 0.02. We decided to not include toll_amounts because when we added it the k value went down to 3. Tolls_amount mostly was $0 which may be the reason for worsening the model. We did log conversion of trip_distance, fare_amount, total_amount, fare_by_distance, speed of taxi to make these columns of data more normalized before using min-max normalization.
+
+# Question 2
+
+### Normalize the data
+```{r}
+# log trip_distance
+taxi_final$log_trip_distance <- log(taxi_final$trip_distance+1)
+# histogram of log(trip distance)
+taxi_final %>% 
+  ggplot(aes(log_trip_distance)) +
+  geom_histogram(binwidth = 0.5, fill = "green", color = "black") +
+  labs(title = "Histogram of log(Trip Distance)", 
+       x = "log(Trip Distance) (miles)",
+       caption = "This histogram shows the log(Trip Distance) distribution") +
+  theme_minimal()
+```
+
+Improves distribution.
+```{r}
+# log fare_amount
+taxi_final$log_fare_amount <- log(taxi_final$fare_amount)
+# histogram of log(fare amount)
+taxi_final %>% 
+  ggplot(aes(log_fare_amount)) +
+  geom_histogram(binwidth = 0.5, fill = "green", color = "black") +
+  labs(title = "Histogram of log(Fare Amount)", 
+       x = "log(Fare Amount) (USD)",
+       caption = "This histogram shows the log(fare amount) distribution") +
+  theme_minimal()
+```
+```{r}
+# log total_amount
+taxi_final$log_total_amount <- log(taxi_final$total_amount)
+# histogram of log(total amount)
+taxi_final %>% 
+  ggplot(aes(log_total_amount)) +
+  geom_histogram(binwidth = 0.5, fill = "green", color = "black") +
+  labs(title = "Histogram of log(Total Amount)", 
+       x = "log(Total Amount) (USD)",
+       caption = "This histogram shows the log(total amount) distribution") +
+  theme_minimal()
+```
+```{r}
+# log fare_by_distance
+taxi_final$log_fare_by_distance <- log(taxi_final$fare_by_distance+1)
+# histogram of log(fare_by_distance)
+taxi_final %>% 
+  ggplot(aes(log_fare_by_distance)) +
+  geom_histogram(binwidth = 0.5, fill = "green", color = "black") +
+  labs(title = "Histogram of log(fare_by_distance)", 
+       x = "log(fare_by_distance) ($/mile)",
+       caption = "This histogram shows the log(fare_by_distance) distribution") +
+  theme_minimal()
+```
+```{r}
+# log(speed)
+taxi_final$log_speed_of_taxi <- log(taxi_final$speed_of_taxi+1)
+# histogram of log(speed_of_taxi)
+taxi_final %>% 
+  ggplot(aes(log_speed_of_taxi)) +
+  geom_histogram(binwidth = 0.5, fill = "green", color = "black") +
+  labs(title = "Histogram of log(speed_of_taxi)", 
+       x = "log(speed_of_taxi) (mile/hour)",
+       caption = "This histogram shows the log(speed) distribution") +
+  theme_minimal()
+```
+
+```{r}
+# Min-Max scaling to fixed range 0 to 1, smaller standard deviations
+preproc <- preProcess(taxi_final[,c("passenger_count", "log_trip_distance", "log_fare_amount", "tip_amount", "log_total_amount", "log_fare_by_distance", "efficiency_ratio", "log_speed_of_taxi", "overnight_surcharge", "rush_hour_surcharge")], method=c("range"))
+taxi_norm <- predict(preproc, taxi_final[,c("passenger_count", "log_trip_distance", "log_fare_amount", "tip_amount","log_total_amount", "log_fare_by_distance", "efficiency_ratio", "log_speed_of_taxi", "overnight_surcharge", "rush_hour_surcharge")])
+# Now min is 0 and max is 1
+summary(taxi_norm)
+```
+
+Applying normalization, log transformation, and min-max scaling before using KNN (K-Nearest Neighbors) is an important data preprocessing sequence that helps improve model performance. 
+Log Transformation is often applied first to handle skewed data distributions which makes highly skewed distributions more symmetric, it is especially useful for data with positive values spanning several orders of magnitude.
+After log transformation, applying min-max scaling to put all features on the same scale of 0 to 1. This step ensures no single feature dominates the distance calculations in KNN. Without proper scaling, features with larger ranges would dominate the distance calculation. Unscaled data can lead to poor performance because of this distance bias.
+This preprocessing sequence creates a more balanced feature space where KNN can function optimally by ensuring all features contribute appropriately to the nearest neighbor calculations.
+
+### Prepare the data for modeling: shuffle the data and split it into training and test sets
+```{r}
+# Randomly shuffle the rows of the dataframe
+taxi_shuffled <- taxi_norm[sample(nrow(taxi_norm)), ]
+
+# Calculate the number of rows for training (70%)
+train_size <- floor(0.7 * nrow(taxi_shuffled))
+
+# Split into training and test sets
+train_data <- taxi_shuffled[1:train_size, ]
+test_data <- taxi_shuffled[(train_size + 1):nrow(taxi_shuffled), ]
+
+# check the size of train and test data
+nrow(train_data)
+nrow(test_data)
+
+# check the head of train and test, should be same everytime we run
+head(train_data)
+head(test_data)
+```
+
+Here we shuffle the data randomizes the order of observations before splitting because it prevents any inherent ordering or patterns in our dataset from introducing bias, also it ensures both training and test sets contain representative samples of all classes or patterns. 
+And then we split the data into separate training and test sets to evaluate model performance and prevent overfitting: By testing on data the model hasn't seen during training, we can detect if it's memorizing the training data rather than learning generalizable patterns. 
+The 70/30 ratio (70% training, 30% testing) is a common default ratio. It balances having enough data to train effectively while retaining sufficient data to test properly. We consider it's a reasonable compromise when working with limited datasets.
+
+```{r}
+knn.predict <- function(train_data, test_data, k, return_preds = FALSE) {
+  # Separate features and target
+  x_train <- train_data %>% select(-tip_amount)
+  y_train <- train_data$tip_amount
+  
+  x_test <- test_data %>% select(-tip_amount)
+  y_test <- test_data$tip_amount
+  
+  # Fit the k-NN model
+  knn_model <- knn.reg(train = x_train, test = x_test, y = y_train, k = k)
+  
+  # Predictions
+  predictions <- knn_model$pred
+  
+ if (return_preds) {
+    return(data.frame(Actual = y_test, Predicted = predictions))
+  }
+
+  #Calculate Mean squared Error
+  mse <- mean((y_test - predictions)^2)
+  return(mse)
+}
+```
+
+```{r}
+# Evaluate MSE for k = 1 to 25
+set.seed(123)  # for reproducibility
+k_values <- sample(1:25, 20)
+mse_values <- numeric(length(k_values))
+
+for (i in seq_along(k_values)) {
+  mse_values[i] <- knn.predict(train_data, test_data, k = k_values[i])
+}
+
+# Create a data frame for plotting
+mse_df <- data.frame(k = k_values, MSE = mse_values)
+
+```
+
+
+```{r}
+best_index <- which.min(mse_df$MSE)
+best_point <- mse_df[best_index, ]
+best_k <- mse_df$k[which.min(mse_df$MSE)]
+best_mse <- min(mse_df$MSE)
+
+cat("Best k:", best_k, "\nLowest MSE:", round(best_mse, 10))
+```
+
+```{r}
+ggplot(mse_df, aes(x = k, y = MSE)) +
+  geom_line(size = 1.2, color = "lightgreen") +
+  geom_point(color = "darkred") +
+  geom_point(data = best_point, aes(x = k, y = MSE), color = "red", size = 4) +
+  geom_text(data = best_point, aes(label = paste0("Best k = ", k)),
+            vjust = -1.0, color = "black", fontface = "bold") +
+  labs(
+    title = "MSE vs. Number of Neighbors (k)",
+    x = "Number of Neighbors (k)",
+    y = "Mean Squared Error (MSE)",
+    caption = "This plot shows the relationship between MSE (mean squared error) and number of neighbors k"
+  ) +
+  theme_minimal()
+```
+
+The MSE vs. k plot demonstrates that the KNN model achieves optimal predictive performance when k = 5. At this point, the model balances bias and variance effectively, avoiding over fitting (low k) and under fitting (high k). Thus, k = 5 is the most suitable value for deployment based on this analysis.
+
+```{r}
+pred_df <- knn.predict(train_data, test_data, k = best_k, return_preds = TRUE)
+```
+
+```{r}
+# Create a function to reverse the normalization
+reverse_normalization <- function(normalized_data, min_value, max_value, colnames) {
+  original_data <- data.frame(matrix(nrow = nrow(normalized_data), ncol = ncol(normalized_data)))
+  colnames(original_data) <- colnames(normalized_data)
+  
+  for (col in colnames) {
+    original_data[,col] <- normalized_data[,col] * (max_value - min_value) + min_value
+  }
+  
+  return(original_data)
+}
+# reverse the normalize tip amount
+de_norm_pred_df <- reverse_normalization(pred_df, 0, 50, c("Predicted", "Actual"))
+# visualize the predicted value vs actual value
+ggplot(de_norm_pred_df, aes(x = Actual, y = Predicted)) +
+  geom_point(alpha = 0.5) +
+  geom_abline(slope = 1, intercept = 0, color = "red", linetype = "dashed") +
+  labs(title = "Actual vs Predicted Tip Amounts (KNN)",
+       x = "Actual Tip Amount",
+       y = "Predicted Tip Amount",
+       caption = "This figure shows the relationship between actual tip amount and predicted tip amount") +
+  theme_minimal()
+```
+
+A significant number of points fall near the red dashed line, especially in the $5–$15 range. This indicates the model is capturing the relationship between trip features and tip amount fairly well. Most predicted values between $5 and $15 are relatively close to the actual. Dense clustering near the red line suggests the model performs reasonably well for frequent, small tips. Predictions still under perform slightly for very high tip amounts (> $20), but this is expected due to their rarity in training data. The overcrowding at low values could be due to imbalanced data (lots of low or zero tips).  While the KNN model demonstrates reasonable predictive power for lower tip values, its under performance on higher values and tendency toward conservative predictions make it sub-optimal for production use.
+
+
+Show the model working
+```{r}
+# 1. Pick a single test observation
+i <- 5  # change index to try other examples
+test_point <- test_data[i, ]
+true_tip <- test_point$tip_amount
+
+# 2. Separate features
+x_train <- train_data %>% select(-tip_amount)
+y_train <- train_data$tip_amount
+x_test_point <- test_point %>% select(-tip_amount)
+
+# 3. Run knn.reg for just that one point
+knn_example <- knn.reg(train = x_train, test = x_test_point, y = y_train, k = 5)
+
+# 4. Predicted tip
+predicted_tip <- knn_example$pred
+
+# Before normalization:
+tip_min <- min(taxi_final$tip_amount)
+tip_max <- max(taxi_final$tip_amount)
+
+# Inverse transform:
+predicted_tip_original_scale <- predicted_tip * (tip_max - tip_min) + tip_min
+true_tip_original_scale <- true_tip * (tip_max - tip_min) + tip_min
+
+# 5. Output the result
+cat("Test example #", i, "\n")
+cat("Predicted tip amount:", round(predicted_tip_original_scale, 2), "\n")
+cat("Actual tip amount:   ", round(true_tip_original_scale, 2), "\n")
+
+```
+
+## Question 5
+```{r}
+# Create a summary table: average efficiency_ratio by pickup_day and pickup_hour
+heatmap_data <- taxi_final %>%
+    mutate(pickup_day = fct_rev(pickup_day)) %>%
+    group_by(pickup_day, pickup_hour) %>%
+    summarise(avg_efficiency = mean(efficiency_ratio, na.rm = TRUE)) %>%
+    ungroup()
+
+# Plot heatmap 
+ggplot(heatmap_data, aes(x = pickup_hour, y = pickup_day, fill = avg_efficiency)) + 
+    geom_tile(color = "white") +
+    # Add rectangle to highlight 7am–6pm Mon–Fri
+    annotate("rect",
+           xmin = 6.5, xmax = 18.5,  # Hour range +/- 0.5 buffer
+           ymin = 1.5, ymax = 6.5,  # Monday (1) to Friday (6), + 0.5 buffer
+           alpha = 0.2, fill = "yellow", color = "black", size = 1, linetype = "dashed") +
+    scale_fill_viridis_c(option = "C", name = "Avg Efficiency") +
+    labs(
+    title = "Average Efficiency Ratio of Green Cabs by Pickup Hour and Day",
+    subtitle = "(2018)",
+    x = "Hour of Day",
+    y = "Day of Week",
+    caption = "The average efficiency ratio across each pickup hour for every day of the week"
+    ) +
+    theme_minimal() +
+    theme(panel.grid = element_blank(),
+          plot.title.position = "plot")
+
+```
+
+Initially we were surprised with the results of the heat map. Showing best efficiency during working hours 7 am to 6pm Monday through Friday. This meant we needed to investigate further. 
+
+```{r}
+# Create a new column to classify weekday vs weekend
+taxi_charts <- taxi_final %>%
+    mutate(day_type = ifelse(pickup_day %in% c("Saturday", "Sunday"), "Weekend", "Weekday"))
+
+# Summarize average efficiency by hour and day type
+efficiency_by_hour <- taxi_charts %>%
+    group_by(pickup_hour, day_type) %>%
+    summarise(avg_efficiency = mean(efficiency_ratio, na.rm = TRUE), .groups = "drop")
+
+# Line plot
+ggplot(efficiency_by_hour, aes(x = pickup_hour, y = avg_efficiency, color = day_type)) +
+    geom_line(size = 1.2) +
+    geom_point(size = 2) +
+    scale_color_manual(values = c("Weekday" = "steelblue", "Weekend" = "orange")) +
+    labs(
+    title = "Average Efficiency Ratio by Hour: Weekday vs Weekend (2018)",
+    x = "Hour of Day",
+    y = "Average Efficiency Ratio",
+    color = "Day Type",
+    caption = "The average efficiency ratio of each hour, compared weekday to weekend in 2018"
+    ) +
+    theme_minimal() +
+    theme(plot.title.position = "plot")
+```
+
+Again we can see the efficiency on weekdays is better than weekends between 6 am and 6pm.
+
+```{r}
+# Summarize average distance by hour and day type
+distance_by_hour <- taxi_charts %>%
+    group_by(pickup_hour, day_type) %>%
+    summarise(avg_distance = mean(trip_distance, na.rm = TRUE), .groups = "drop")
+
+# Line plot
+ggplot(distance_by_hour, aes(x = pickup_hour, y = avg_distance, color = day_type)) +
+    geom_line(size = 1.2) +
+    geom_point(size = 2) +
+    scale_color_manual(values = c("Weekday" = "red", "Weekend" = "green")) +
+    labs(
+    title = "Average Distance by Hour: Weekday vs Weekend (2018)",
+    x = "Hour of Day",
+    y = "Average Distance (Miles)",
+    color = "Day Type",
+    caption = "The average distance of each hour, compared weekday to weekend in 2018"
+    ) +
+    theme_minimal() +
+    theme(plot.title.position = "plot")
+```
+
+It appears there may be decreased efficiency in the morning before 6 am because of longer rides. We see a spike in distance at 5am and this corresponds to a drop in efficiency at 4-5 am in the last chart. 
+
+```{r}
+# import taxi zone look up 
+taxi_zones <- read.csv("taxi_zone_lookup.csv")
+dim(taxi_zones)
+summary(taxi_zones)
+```
+
+```{r}
+# time of day for trips to the airport 
+airport_trips_by_hour <- taxi_charts %>%
+    filter(day_type == "Weekday") %>% # filter for Weekday
+    left_join(taxi_zones, by = c("DOLocationID" = "LocationID")) %>%
+    filter(Zone %in%  c("JFK Airport", "LaGuardia Airport", "Newark Airport")) %>%
+    group_by(pickup_hour, Zone) %>%
+    summarize(n_trips = n(), .groups = "drop")
+
+# bar chart
+ggplot(airport_trips_by_hour, aes(x = pickup_hour, y = n_trips)) +
+    geom_col(fill = "blue") +
+    labs(title = "Airport Trips by Hour of Day on Weekdays (JFK, La Guardia, Newark)",
+    x = "Pickup Hour",
+    y = "Number of Trips",
+    caption = "The plots shows the count of long trip for each hour in 2018"
+    ) +
+    theme_minimal()
+    
+    
+```
+
+The first theory was more people are traveling to the airport at 5 am. We definitely see a rise in people traveling to the airports at 5am but more taxis will go to the airport in afternoon rush hour. 
+
+```{r}
+# where are people going at 5 am?
+top_drop_off_5am <- taxi_charts %>%
+    filter(pickup_hour == 5 & day_type == "Weekday") %>%
+    count(DOLocationID, sort = TRUE) %>%
+    left_join(taxi_zones, by = c("DOLocationID" = "LocationID"))
+
+head(top_drop_off_5am, 10)
+    
+```
+```{r}
+top_drop_off_5am %>%
+    slice_max(n, n = 10) %>%
+    ggplot(aes(x = reorder(Zone, n), y = n)) +
+    geom_col(fill = "darkgreen") +
+    coord_flip() +
+    labs(title = "Top Drop-off Zones at 5 AM",
+       x = "Zone",
+       y = "Number of Drop-offs",
+       caption = "This graph shows the top drop-off zones at 5AM") +
+    theme_minimal()
+```
+
+At 5 am the top drop off locations are La Guardia and JFK and then mostly areas Manhattan. People traveling to Manhattan are likely people traveling for work.
+
+```{r}
+# who is traveling at 5 am?
+taxi_charts %>%
+    filter(pickup_hour == 5 & day_type == "Weekday") %>%
+    group_by(passenger_count) %>%
+    summarise(n = n(), avg_distance = mean(trip_distance, na.rm = TRUE)) %>%
+    arrange(desc(n)) 
+
+```
+Most trips are single passengers which gives weight to the theory of people traveling to work. 
+
+```{r}
+# Hours of day with the most rides less than 1 mile
+taxi_final %>%
+    filter(trip_distance < 1) %>%  # Filter for short rides
+    group_by(pickup_hour) %>%
+    summarise(n_short_rides = n(), .groups = "drop") %>%
+    ggplot(aes(x = pickup_hour, y = n_short_rides)) +
+    geom_col(fill = "pink", color = "black") +
+    labs(title = "Rides Less Than 1 mile by Hour of Day For Green Taxi's in 2018", 
+         x = "Hour of Day", 
+         y = "Number of rides < 1 mile",
+         caption = "This graph shows the distribution of short rides among every hour of day in 2018") +
+    theme_minimal()
+```
+
+This chart shows that the drop in efficiency after 6 pm is likely due to an increase in very short or aborted rides (rides less than 1 mile). One study sited in a news article in 2021 showed that traffic is worst after 4pm. These short rides may be because people choose to get out of the taxi that is stuck in traffic.
+
+Corrado, K. (2021 Dec.8). NYC has worst traffic congestion in U.S., among worst in world: study.https://pix11.com/news/local-news/nyc-worst-traffic-in-country-study-finds/
+
+In conclusion it seems like the most efficient rides are between 7am - 6pm Monday - Friday because of longer rides in the morning and bad traffic in the evening. 
+
+
+
